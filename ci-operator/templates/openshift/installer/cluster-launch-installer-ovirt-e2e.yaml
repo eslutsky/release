@@ -178,6 +178,10 @@ objects:
         OVIRT_ENGINE_TEMPLATE_NAME="${ovirt_engine_template_name}"
         EOF
 
+        # we need jq in the setup container for rchos_image extraction
+        mkdir /tmp/shared/bin
+        cp $(which jq) /tmp/shared/bin/jq
+
         touch /tmp/shared/leased
 
         function release() {
@@ -465,12 +469,18 @@ objects:
             install_state=$1
         fi
 
+        rchos_image=na
+        # extract the rchos image URL , so it could be sent to oVirt engine.
+        if [ -f /tmp/artifacts/installer/.openshift_install_state.json ] ; then
+          rchos_image=$(cat /tmp/artifacts/installer/.openshift_install_state.json | /tmp/bin/jq '."*rhcos.Image"')
+        fi
+
         #take the last 7 chars from the id and convert it to int
         printf -v build_id '%d\n' $((10#${build_id: -7})) # ${build_id: -7}
         epoch=$(date +'%s')
         cat <<__EOF__ > /tmp/artifacts/installer/event.xml
         <event>
-          <description>Openshift CI - cluster installation;${OCP_CLUSTER};${install_state};${JOB_SPEC} </description>
+          <description>Openshift CI - cluster installation;${OCP_CLUSTER};${install_state};${JOB_SPEC} ;${rchos_image} </description>
           <severity>normal</severity>
           <origin>openshift-ci</origin>
           <custom_id>$((${epoch}+${build_id}))</custom_id>
@@ -513,6 +523,7 @@ objects:
         fi
 
         #notify oVirt infrastucture that ocp installation started
+
         #this allow us to connect running VMs to a PR number
         send_event_to_ovirt "Started"
 
